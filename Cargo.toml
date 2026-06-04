@@ -1,0 +1,11 @@
+[package]
+name = "conservation-matrix"
+version = "0.1.0"
+edition = "2021"
+description = "Conservation laws in ternary agent systems — avoidance ratio, fitness convergence, ecological resilience"
+license = "MIT"
+repository = "https://github.com/SuperInstance/conservation-matrix-rs"
+keywords = ["ternary", "agents", "conservation", "ecology", "simulation"]
+categories = ["science", "mathematics", "simulation"]
+
+[dev-dependencies]
