@@ -57,8 +57,15 @@ impl ConservationTracker {
         }
     }
 
-    /// Record a generation's action distribution
+    /// Record a generation's action distribution.
+    ///
+    /// If `actions` is empty the call is a no-op: an empty population has no
+    /// meaningful distribution, and computing ratios would divide by zero,
+    /// poisoning the history with `NaN`.
     pub fn record(&mut self, actions: &[Ternary]) {
+        if actions.is_empty() {
+            return;
+        }
         let n = actions.len() as f64;
         let avoid = actions.iter().filter(|a| **a == Ternary::Avoid).count() as f64 / n;
         let unknown = actions.iter().filter(|a| **a == Ternary::Unknown).count() as f64 / n;
@@ -580,6 +587,23 @@ mod tests {
         assert_eq!(tracker.avoidance_mean(), 0.0);
         assert_eq!(tracker.avoidance_std(), 0.0);
         assert!(tracker.verify_conservation(0.01)); // vacuously true
+    }
+
+    #[test]
+    fn test_conservation_tracker_empty_actions_no_nan() {
+        // Regression: recording an empty action slice must not poison the
+        // history with NaN (previously 0/0 division).
+        let mut tracker = ConservationTracker::new(100);
+        tracker.record(&[]); // should be a no-op
+        assert_eq!(tracker.generations(), 0);
+        assert!(!tracker.avoidance_mean().is_nan());
+        assert!(!tracker.avoidance_std().is_nan());
+
+        // Record a valid generation afterwards — stats should be clean.
+        let actions = vec![Ternary::Avoid, Ternary::Choose];
+        tracker.record(&actions);
+        assert!((tracker.avoidance_mean() - 0.5).abs() < 1e-12);
+        assert!(!tracker.avoidance_std().is_nan());
     }
 
     #[test]
