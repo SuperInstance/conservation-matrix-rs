@@ -151,15 +151,14 @@ impl FitnessConvergence {
 
     /// Check if converged within tolerance
     pub fn is_converged(&self, tolerance: f64) -> bool {
-        self.current().map_or(false, |f| (f - self.target).abs() < tolerance)
+        self.current()
+            .is_some_and(|f| (f - self.target).abs() < tolerance)
     }
 
     /// Convergence rate: how many generations to reach within 5% of target
     pub fn convergence_generation(&self, tolerance_pct: f64) -> Option<usize> {
         let threshold = self.target * (1.0 - tolerance_pct / 100.0);
-        self.fitness_history
-            .iter()
-            .position(|&f| f >= threshold)
+        self.fitness_history.iter().position(|&f| f >= threshold)
     }
 
     /// Total fitness improvement from first to last
@@ -241,6 +240,12 @@ pub struct EcologicalResilience {
     species_history: Vec<HashMap<StrategySpecies, usize>>,
 }
 
+impl Default for EcologicalResilience {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EcologicalResilience {
     /// Create a new resilience tracker
     pub fn new() -> Self {
@@ -278,7 +283,9 @@ impl EcologicalResilience {
     /// Check if all species are still present in the latest generation
     pub fn all_species_survive(&self) -> bool {
         match self.species_history.last() {
-            Some(c) => StrategySpecies::all().iter().all(|s| c.get(s).copied().unwrap_or(0) > 0),
+            Some(c) => StrategySpecies::all()
+                .iter()
+                .all(|s| c.get(s).copied().unwrap_or(0) > 0),
             None => false,
         }
     }
@@ -309,22 +316,17 @@ pub struct PopulationAdvantage;
 impl PopulationAdvantage {
     /// Compute fitness advantage of population over individual agent
     /// Based on finding: +0.075 fitness advantage
-    pub fn compute(
-        population_fitness: &[f64],
-        best_individual_fitness: f64,
-    ) -> f64 {
+    pub fn compute(population_fitness: &[f64], best_individual_fitness: f64) -> f64 {
         if population_fitness.is_empty() {
             return 0.0;
         }
-        let pop_mean: f64 = population_fitness.iter().sum::<f64>() / population_fitness.len() as f64;
+        let pop_mean: f64 =
+            population_fitness.iter().sum::<f64>() / population_fitness.len() as f64;
         pop_mean - best_individual_fitness
     }
 
     /// Check if population advantage is positive (population > individual)
-    pub fn population_wins(
-        population_fitness: &[f64],
-        best_individual_fitness: f64,
-    ) -> bool {
+    pub fn population_wins(population_fitness: &[f64], best_individual_fitness: f64) -> bool {
         Self::compute(population_fitness, best_individual_fitness) > 0.0
     }
 }
@@ -332,6 +334,12 @@ impl PopulationAdvantage {
 /// Avoid-to-choose ratio tracker
 pub struct AvoidChooseRatio {
     ratios: Vec<f64>,
+}
+
+impl Default for AvoidChooseRatio {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AvoidChooseRatio {
@@ -398,7 +406,8 @@ mod tests {
         let mut tracker = ConservationTracker::new(100);
         // Record 5 generations with consistent ratios
         for _ in 0..5 {
-            let actions: Vec<Ternary> = (0..50).map(|_| Ternary::Avoid)
+            let actions: Vec<Ternary> = (0..50)
+                .map(|_| Ternary::Avoid)
                 .chain((0..30).map(|_| Ternary::Unknown))
                 .chain((0..20).map(|_| Ternary::Choose))
                 .collect();
@@ -428,10 +437,16 @@ mod tests {
                 tracker.record(&actions);
             }
             // Avoidance ratio should be ~0.5 regardless of scale
-            assert!((tracker.avoidance_mean() - 0.5).abs() < 0.01,
-                "Failed at pop_size={}", pop_size);
-            assert!(tracker.verify_conservation(0.02),
-                "Conservation violated at pop_size={}", pop_size);
+            assert!(
+                (tracker.avoidance_mean() - 0.5).abs() < 0.01,
+                "Failed at pop_size={}",
+                pop_size
+            );
+            assert!(
+                tracker.verify_conservation(0.02),
+                "Conservation violated at pop_size={}",
+                pop_size
+            );
         }
     }
 
@@ -501,7 +516,12 @@ mod tests {
         }
         eco.record(counts);
         let div = eco.shannon_diversity();
-        assert!((div - 5f64.log2()).abs() < 0.01, "Expected {}, got {}", 5f64.log2(), div);
+        assert!(
+            (div - 5f64.log2()).abs() < 0.01,
+            "Expected {}, got {}",
+            5f64.log2(),
+            div
+        );
     }
 
     #[test]
@@ -521,14 +541,20 @@ mod tests {
         let best_individual = 0.84;
         let adv = PopulationAdvantage::compute(&pop_fitness, best_individual);
         assert!(adv > 0.0, "Population should beat individual, got {}", adv);
-        assert!(PopulationAdvantage::population_wins(&pop_fitness, best_individual));
+        assert!(PopulationAdvantage::population_wins(
+            &pop_fitness,
+            best_individual
+        ));
     }
 
     #[test]
     fn test_population_advantage_negative() {
         let pop_fitness = vec![0.5, 0.6, 0.55];
         let best_individual = 0.9;
-        assert!(!PopulationAdvantage::population_wins(&pop_fitness, best_individual));
+        assert!(!PopulationAdvantage::population_wins(
+            &pop_fitness,
+            best_individual
+        ));
     }
 
     #[test]
@@ -599,8 +625,16 @@ mod tests {
         assert!(n1 > 1.0, "Species 1 died: n1={}", n1);
         assert!(n2 > 1.0, "Species 2 died: n2={}", n2);
         // Should be near equilibrium
-        assert!((n1 - 66.7).abs() < 10.0, "Species 1 not at equilibrium: {}", n1);
-        assert!((n2 - 66.7).abs() < 10.0, "Species 2 not at equilibrium: {}", n2);
+        assert!(
+            (n1 - 66.7).abs() < 10.0,
+            "Species 1 not at equilibrium: {}",
+            n1
+        );
+        assert!(
+            (n2 - 66.7).abs() < 10.0,
+            "Species 2 not at equilibrium: {}",
+            n2
+        );
     }
 
     #[test]
@@ -610,7 +644,7 @@ mod tests {
         let n = species.len();
         let r: Vec<f64> = vec![1.0, 0.8, 1.2, 0.7, 0.5]; // growth rates
         let k = vec![100.0; 5]; // carrying capacities
-        // Interaction matrix (moderate competition)
+                                // Interaction matrix (moderate competition)
         let alpha = vec![
             vec![1.0, 0.3, 0.2, 0.3, 0.2],
             vec![0.3, 1.0, 0.3, 0.2, 0.2],
@@ -635,7 +669,13 @@ mod tests {
 
         // All 5 species should survive (ecological resilience)
         for (i, &p) in pop.iter().enumerate() {
-            assert!(p > 1.0, "Species {} ({}) died: pop={}", i, species[i].name(), p);
+            assert!(
+                p > 1.0,
+                "Species {} ({}) died: pop={}",
+                i,
+                species[i].name(),
+                p
+            );
         }
     }
 }
