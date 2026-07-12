@@ -680,14 +680,21 @@ mod tests {
         let mut pop = vec![20.0_f64; 5];
         let dt = 0.01;
 
+        // Simultaneous (Jacobi) Euler integration: compute all deltas from the
+        // current state *before* applying any of them. Updating pop[i] in place
+        // inside the loop (Gauss-Seidel) changes the dynamics and is not the
+        // textbook forward-Euler scheme claimed in the README.
         for _ in 0..5000 {
+            let mut deltas = [0.0_f64; 5];
             for i in 0..n {
                 let competition: f64 = (0..n)
                     .filter(|&j| j != i)
                     .map(|j| alpha[i][j] * pop[j] / k[i])
                     .sum();
-                let dn = r[i] * pop[i] * (1.0 - pop[i] / k[i] - competition) * dt;
-                pop[i] = (pop[i] + dn).max(0.01);
+                deltas[i] = r[i] * pop[i] * (1.0 - pop[i] / k[i] - competition) * dt;
+            }
+            for i in 0..n {
+                pop[i] = (pop[i] + deltas[i]).max(0.01);
             }
         }
 
@@ -699,6 +706,22 @@ mod tests {
                 i,
                 species[i].name(),
                 p
+            );
+        }
+
+        // Numerical correctness: verify convergence to the analytically known
+        // coexistence equilibrium. At equilibrium dN_i/dt = 0 implies
+        // Σ_j α_ij N_j = K_i, i.e. A·N* = K. Solving gives:
+        //   [49.62, 50.80, 42.49, 50.80, 57.01]
+        let expected = [49.62, 50.80, 42.49, 50.80, 57.01];
+        for (i, (&p, &e)) in pop.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (p - e).abs() < 1.0,
+                "Species {} ({}) not at equilibrium: got {:.2}, expected {:.2}",
+                i,
+                species[i].name(),
+                p,
+                e
             );
         }
     }
