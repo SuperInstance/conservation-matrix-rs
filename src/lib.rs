@@ -725,4 +725,71 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_avoid_choose_ratio_zero_choose() {
+        // When choose_count == 0 the ratio is undefined (∞); the tracker
+        // silently skips that generation rather than storing NaN/inf.
+        let mut ratio = AvoidChooseRatio::new();
+        ratio.record(294, 0); // skipped
+        ratio.record(294, 1); // recorded
+        assert_eq!(ratio.generations(), 1);
+        assert!((ratio.mean() - 294.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_matches_discovered_false() {
+        let mut ratio = AvoidChooseRatio::new();
+        ratio.record(10, 1);
+        assert!(!ratio.matches_discovered(5.0)); // mean 10 ≠ 294
+    }
+
+    #[test]
+    fn test_shannon_diversity_single_species() {
+        // A single species → H = 0 (no uncertainty)
+        let mut eco = EcologicalResilience::new();
+        let mut counts = HashMap::new();
+        counts.insert(StrategySpecies::Explorer, 100);
+        eco.record(counts);
+        assert!((eco.shannon_diversity() - 0.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_shannon_diversity_empty_map() {
+        // Empty distribution → H = 0 (total is 0)
+        let mut eco = EcologicalResilience::new();
+        eco.record(HashMap::new());
+        assert!((eco.shannon_diversity() - 0.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_resilience_index_none_survive() {
+        // No species present in latest generation → index 0
+        let mut eco = EcologicalResilience::new();
+        eco.record(HashMap::new());
+        assert!((eco.resilience_index() - 0.0).abs() < 1e-12);
+        assert!(!eco.all_species_survive());
+    }
+
+    #[test]
+    fn test_population_advantage_empty() {
+        // Empty population → advantage 0 (guarded)
+        assert!((PopulationAdvantage::compute(&[], 0.5) - 0.0).abs() < 1e-12);
+        assert!(!PopulationAdvantage::population_wins(&[], 0.5));
+    }
+
+    #[test]
+    fn test_default_implementations() {
+        // Default impls exist for clippy::new_without_default compliance
+        let _eco: EcologicalResilience = Default::default();
+        let _ratio: AvoidChooseRatio = Default::default();
+    }
+
+    #[test]
+    fn test_fitness_total_improvement_single_element() {
+        // Only one generation recorded → no improvement computable
+        let mut conv = FitnessConvergence::new(1.0);
+        conv.record(0.5);
+        assert!(conv.total_improvement().is_none());
+    }
 }
