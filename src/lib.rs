@@ -57,8 +57,15 @@ impl ConservationTracker {
         }
     }
 
-    /// Record a generation's action distribution
+    /// Record a generation's action distribution.
+    ///
+    /// If `actions` is empty the call is a no-op: an empty population has no
+    /// meaningful distribution, and computing ratios would divide by zero,
+    /// poisoning the history with `NaN`.
     pub fn record(&mut self, actions: &[Ternary]) {
+        if actions.is_empty() {
+            return;
+        }
         let n = actions.len() as f64;
         let avoid = actions.iter().filter(|a| **a == Ternary::Avoid).count() as f64 / n;
         let unknown = actions.iter().filter(|a| **a == Ternary::Unknown).count() as f64 / n;
@@ -151,15 +158,14 @@ impl FitnessConvergence {
 
     /// Check if converged within tolerance
     pub fn is_converged(&self, tolerance: f64) -> bool {
-        self.current().map_or(false, |f| (f - self.target).abs() < tolerance)
+        self.current()
+            .is_some_and(|f| (f - self.target).abs() < tolerance)
     }
 
     /// Convergence rate: how many generations to reach within 5% of target
     pub fn convergence_generation(&self, tolerance_pct: f64) -> Option<usize> {
         let threshold = self.target * (1.0 - tolerance_pct / 100.0);
-        self.fitness_history
-            .iter()
-            .position(|&f| f >= threshold)
+        self.fitness_history.iter().position(|&f| f >= threshold)
     }
 
     /// Total fitness improvement from first to last
@@ -241,6 +247,12 @@ pub struct EcologicalResilience {
     species_history: Vec<HashMap<StrategySpecies, usize>>,
 }
 
+impl Default for EcologicalResilience {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EcologicalResilience {
     /// Create a new resilience tracker
     pub fn new() -> Self {
@@ -278,7 +290,9 @@ impl EcologicalResilience {
     /// Check if all species are still present in the latest generation
     pub fn all_species_survive(&self) -> bool {
         match self.species_history.last() {
-            Some(c) => StrategySpecies::all().iter().all(|s| c.get(s).copied().unwrap_or(0) > 0),
+            Some(c) => StrategySpecies::all()
+                .iter()
+                .all(|s| c.get(s).copied().unwrap_or(0) > 0),
             None => false,
         }
     }
@@ -309,22 +323,17 @@ pub struct PopulationAdvantage;
 impl PopulationAdvantage {
     /// Compute fitness advantage of population over individual agent
     /// Based on finding: +0.075 fitness advantage
-    pub fn compute(
-        population_fitness: &[f64],
-        best_individual_fitness: f64,
-    ) -> f64 {
+    pub fn compute(population_fitness: &[f64], best_individual_fitness: f64) -> f64 {
         if population_fitness.is_empty() {
             return 0.0;
         }
-        let pop_mean: f64 = population_fitness.iter().sum::<f64>() / population_fitness.len() as f64;
+        let pop_mean: f64 =
+            population_fitness.iter().sum::<f64>() / population_fitness.len() as f64;
         pop_mean - best_individual_fitness
     }
 
     /// Check if population advantage is positive (population > individual)
-    pub fn population_wins(
-        population_fitness: &[f64],
-        best_individual_fitness: f64,
-    ) -> bool {
+    pub fn population_wins(population_fitness: &[f64], best_individual_fitness: f64) -> bool {
         Self::compute(population_fitness, best_individual_fitness) > 0.0
     }
 }
@@ -332,6 +341,12 @@ impl PopulationAdvantage {
 /// Avoid-to-choose ratio tracker
 pub struct AvoidChooseRatio {
     ratios: Vec<f64>,
+}
+
+impl Default for AvoidChooseRatio {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AvoidChooseRatio {
@@ -398,7 +413,8 @@ mod tests {
         let mut tracker = ConservationTracker::new(100);
         // Record 5 generations with consistent ratios
         for _ in 0..5 {
-            let actions: Vec<Ternary> = (0..50).map(|_| Ternary::Avoid)
+            let actions: Vec<Ternary> = (0..50)
+                .map(|_| Ternary::Avoid)
                 .chain((0..30).map(|_| Ternary::Unknown))
                 .chain((0..20).map(|_| Ternary::Choose))
                 .collect();
@@ -428,10 +444,16 @@ mod tests {
                 tracker.record(&actions);
             }
             // Avoidance ratio should be ~0.5 regardless of scale
-            assert!((tracker.avoidance_mean() - 0.5).abs() < 0.01,
-                "Failed at pop_size={}", pop_size);
-            assert!(tracker.verify_conservation(0.02),
-                "Conservation violated at pop_size={}", pop_size);
+            assert!(
+                (tracker.avoidance_mean() - 0.5).abs() < 0.01,
+                "Failed at pop_size={}",
+                pop_size
+            );
+            assert!(
+                tracker.verify_conservation(0.02),
+                "Conservation violated at pop_size={}",
+                pop_size
+            );
         }
     }
 
@@ -501,7 +523,12 @@ mod tests {
         }
         eco.record(counts);
         let div = eco.shannon_diversity();
-        assert!((div - 5f64.log2()).abs() < 0.01, "Expected {}, got {}", 5f64.log2(), div);
+        assert!(
+            (div - 5f64.log2()).abs() < 0.01,
+            "Expected {}, got {}",
+            5f64.log2(),
+            div
+        );
     }
 
     #[test]
@@ -521,14 +548,20 @@ mod tests {
         let best_individual = 0.84;
         let adv = PopulationAdvantage::compute(&pop_fitness, best_individual);
         assert!(adv > 0.0, "Population should beat individual, got {}", adv);
-        assert!(PopulationAdvantage::population_wins(&pop_fitness, best_individual));
+        assert!(PopulationAdvantage::population_wins(
+            &pop_fitness,
+            best_individual
+        ));
     }
 
     #[test]
     fn test_population_advantage_negative() {
         let pop_fitness = vec![0.5, 0.6, 0.55];
         let best_individual = 0.9;
-        assert!(!PopulationAdvantage::population_wins(&pop_fitness, best_individual));
+        assert!(!PopulationAdvantage::population_wins(
+            &pop_fitness,
+            best_individual
+        ));
     }
 
     #[test]
@@ -554,6 +587,23 @@ mod tests {
         assert_eq!(tracker.avoidance_mean(), 0.0);
         assert_eq!(tracker.avoidance_std(), 0.0);
         assert!(tracker.verify_conservation(0.01)); // vacuously true
+    }
+
+    #[test]
+    fn test_conservation_tracker_empty_actions_no_nan() {
+        // Regression: recording an empty action slice must not poison the
+        // history with NaN (previously 0/0 division).
+        let mut tracker = ConservationTracker::new(100);
+        tracker.record(&[]); // should be a no-op
+        assert_eq!(tracker.generations(), 0);
+        assert!(!tracker.avoidance_mean().is_nan());
+        assert!(!tracker.avoidance_std().is_nan());
+
+        // Record a valid generation afterwards — stats should be clean.
+        let actions = vec![Ternary::Avoid, Ternary::Choose];
+        tracker.record(&actions);
+        assert!((tracker.avoidance_mean() - 0.5).abs() < 1e-12);
+        assert!(!tracker.avoidance_std().is_nan());
     }
 
     #[test]
@@ -599,8 +649,16 @@ mod tests {
         assert!(n1 > 1.0, "Species 1 died: n1={}", n1);
         assert!(n2 > 1.0, "Species 2 died: n2={}", n2);
         // Should be near equilibrium
-        assert!((n1 - 66.7).abs() < 10.0, "Species 1 not at equilibrium: {}", n1);
-        assert!((n2 - 66.7).abs() < 10.0, "Species 2 not at equilibrium: {}", n2);
+        assert!(
+            (n1 - 66.7).abs() < 10.0,
+            "Species 1 not at equilibrium: {}",
+            n1
+        );
+        assert!(
+            (n2 - 66.7).abs() < 10.0,
+            "Species 2 not at equilibrium: {}",
+            n2
+        );
     }
 
     #[test]
@@ -610,7 +668,7 @@ mod tests {
         let n = species.len();
         let r: Vec<f64> = vec![1.0, 0.8, 1.2, 0.7, 0.5]; // growth rates
         let k = vec![100.0; 5]; // carrying capacities
-        // Interaction matrix (moderate competition)
+                                // Interaction matrix (moderate competition)
         let alpha = vec![
             vec![1.0, 0.3, 0.2, 0.3, 0.2],
             vec![0.3, 1.0, 0.3, 0.2, 0.2],
@@ -622,20 +680,116 @@ mod tests {
         let mut pop = vec![20.0_f64; 5];
         let dt = 0.01;
 
+        // Simultaneous (Jacobi) Euler integration: compute all deltas from the
+        // current state *before* applying any of them. Updating pop[i] in place
+        // inside the loop (Gauss-Seidel) changes the dynamics and is not the
+        // textbook forward-Euler scheme claimed in the README.
         for _ in 0..5000 {
+            let mut deltas = [0.0_f64; 5];
             for i in 0..n {
                 let competition: f64 = (0..n)
                     .filter(|&j| j != i)
                     .map(|j| alpha[i][j] * pop[j] / k[i])
                     .sum();
-                let dn = r[i] * pop[i] * (1.0 - pop[i] / k[i] - competition) * dt;
-                pop[i] = (pop[i] + dn).max(0.01);
+                deltas[i] = r[i] * pop[i] * (1.0 - pop[i] / k[i] - competition) * dt;
+            }
+            for i in 0..n {
+                pop[i] = (pop[i] + deltas[i]).max(0.01);
             }
         }
 
         // All 5 species should survive (ecological resilience)
         for (i, &p) in pop.iter().enumerate() {
-            assert!(p > 1.0, "Species {} ({}) died: pop={}", i, species[i].name(), p);
+            assert!(
+                p > 1.0,
+                "Species {} ({}) died: pop={}",
+                i,
+                species[i].name(),
+                p
+            );
         }
+
+        // Numerical correctness: verify convergence to the analytically known
+        // coexistence equilibrium. At equilibrium dN_i/dt = 0 implies
+        // Σ_j α_ij N_j = K_i, i.e. A·N* = K. Solving gives:
+        //   [49.62, 50.80, 42.49, 50.80, 57.01]
+        let expected = [49.62, 50.80, 42.49, 50.80, 57.01];
+        for (i, (&p, &e)) in pop.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (p - e).abs() < 1.0,
+                "Species {} ({}) not at equilibrium: got {:.2}, expected {:.2}",
+                i,
+                species[i].name(),
+                p,
+                e
+            );
+        }
+    }
+
+    #[test]
+    fn test_avoid_choose_ratio_zero_choose() {
+        // When choose_count == 0 the ratio is undefined (∞); the tracker
+        // silently skips that generation rather than storing NaN/inf.
+        let mut ratio = AvoidChooseRatio::new();
+        ratio.record(294, 0); // skipped
+        ratio.record(294, 1); // recorded
+        assert_eq!(ratio.generations(), 1);
+        assert!((ratio.mean() - 294.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_matches_discovered_false() {
+        let mut ratio = AvoidChooseRatio::new();
+        ratio.record(10, 1);
+        assert!(!ratio.matches_discovered(5.0)); // mean 10 ≠ 294
+    }
+
+    #[test]
+    fn test_shannon_diversity_single_species() {
+        // A single species → H = 0 (no uncertainty)
+        let mut eco = EcologicalResilience::new();
+        let mut counts = HashMap::new();
+        counts.insert(StrategySpecies::Explorer, 100);
+        eco.record(counts);
+        assert!((eco.shannon_diversity() - 0.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_shannon_diversity_empty_map() {
+        // Empty distribution → H = 0 (total is 0)
+        let mut eco = EcologicalResilience::new();
+        eco.record(HashMap::new());
+        assert!((eco.shannon_diversity() - 0.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_resilience_index_none_survive() {
+        // No species present in latest generation → index 0
+        let mut eco = EcologicalResilience::new();
+        eco.record(HashMap::new());
+        assert!((eco.resilience_index() - 0.0).abs() < 1e-12);
+        assert!(!eco.all_species_survive());
+    }
+
+    #[test]
+    fn test_population_advantage_empty() {
+        // Empty population → advantage 0 (guarded)
+        assert!((PopulationAdvantage::compute(&[], 0.5) - 0.0).abs() < 1e-12);
+        assert!(!PopulationAdvantage::population_wins(&[], 0.5));
+    }
+
+    #[test]
+    fn test_default_implementations() {
+        // Default impls exist for clippy::new_without_default compliance
+        let _eco: EcologicalResilience = Default::default();
+        let _ratio: AvoidChooseRatio = Default::default();
+    }
+
+    #[test]
+    fn test_fitness_total_improvement_single_element() {
+        // Only one generation recorded → no improvement computable
+        let mut conv = FitnessConvergence::new(1.0);
+        conv.record(0.5);
+        assert!(conv.total_improvement().is_none());
     }
 }

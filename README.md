@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-The central empirical finding of the SuperInstance research program is that certain ratios are *conserved* — they remain invariant across population scales, generations, and environmental conditions. Specifically, the avoidance-to-choose ratio of approximately 294:1 holds with standard deviation ≈ 0.001 across populations ranging from 10 to 50,000 agents. This is not a design choice but an emergent property of ternary action spaces. This library provides the computational infrastructure to measure, verify, and track these conservation invariants. It also demonstrates that population-level selection yields a +0.075 fitness advantage over individual-level selection, and that five distinct strategy species coexist indefinitely under competitive Lotka-Volterra dynamics — 100% ecological resilience.
+The central empirical finding of the SuperInstance research program is that certain ratios are *conserved* — they remain invariant across population scales, generations, and environmental conditions. Specifically, the avoidance-to-choose ratio of approximately 294:1 holds with standard deviation ≈ 0.001 across populations ranging from 10 to 5,000 agents (the scales tested in this library's test suite). This is not a design choice but an emergent property of ternary action spaces. This library provides the computational infrastructure to measure, verify, and track these conservation invariants. It also provides tools to compute population-level selection advantage (the +0.075 figure is an empirical finding from the broader research program, not a hard-coded constant), and verifies that five distinct strategy species coexist at equilibrium under competitive Lotka-Volterra dynamics — 100% ecological resilience.
 
 ## How It Works
 
@@ -60,24 +60,26 @@ Simulated via Euler integration with dt = 0.01. Intra-species competition αᵢ�
 advantage = mean(population_fitness) − best_individual_fitness
 ```
 
-Empirically: advantage ≈ +0.075.
+> **Note:** The +0.075 figure is an empirical finding from the broader
+> SuperInstance research program, not a constant enforced by this library.
+> `PopulationAdvantage::compute` returns whatever the supplied data yields.
 
 ## Quick Start
 
 ```rust
-fn main() {
-    let mut tracker = ConservationTracker::new(100);
-    for _ in 0..10 {
-        let actions: Vec<Ternary> = (0..50).map(|_| Ternary::Avoid)
-            .chain((0..30).map(|_| Ternary::Unknown))
-            .chain((0..20).map(|_| Ternary::Choose))
-            .collect();
-        tracker.record(&actions);
-    }
-    println!("Avoidance mean: {:.4}", tracker.avoidance_mean()); // ~0.50
-    println!("Conservation σ: {:.6}", tracker.avoidance_std());  // ~0.0
-    println!("Conserved: {}", tracker.verify_conservation(0.01)); // true
+use conservation_matrix::{ConservationTracker, Ternary};
+
+let mut tracker = ConservationTracker::new(100);
+for _ in 0..10 {
+    let actions: Vec<Ternary> = (0..50).map(|_| Ternary::Avoid)
+        .chain((0..30).map(|_| Ternary::Unknown))
+        .chain((0..20).map(|_| Ternary::Choose))
+        .collect();
+    tracker.record(&actions);
 }
+println!("Avoidance mean: {:.4}", tracker.avoidance_mean()); // ~0.50
+println!("Conservation σ: {:.6}", tracker.avoidance_std());  // ~0.0
+println!("Conserved: {}", tracker.verify_conservation(0.01)); // true
 ```
 
 ## API
@@ -94,9 +96,17 @@ fn main() {
 
 ## Architecture Notes
 
-Conservation Matrix is the **core conservation-law library** of the SuperInstance fleet, directly implementing γ + η = C. The γ-layer produces ternary actions; the η-layer computes the conservation statistics. When conservation holds (σ ≈ 0.001), the system is in equilibrium; when it breaks, the fleet enters alarm state.
+This library implements the **statistics and verification layer** for conservation laws in ternary agent systems: ratio tracking, standard-deviation conservation checks, Shannon diversity, fitness convergence, and competitive Lotka-Volterra dynamics.
 
-See [ARCHITECTURE.md](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
+> **Status — not yet implemented:** The broader SuperInstance fleet architecture
+> describes a conservation invariant *γ + η = C*, where a γ-layer produces
+> ternary actions and an η-layer computes conservation statistics, with an alarm
+> state when conservation breaks. **This library does not currently implement
+> the γ/η layering, the γ + η = C equation, or any alarm-state mechanism.**
+> Those are aspirational integration points documented in
+> [docs/FUTURE-INTEGRATION.md](docs/FUTURE-INTEGRATION.md).
+
+See [ARCHITECTURE.md](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md) for the fleet-wide design.
 
 ## References
 
